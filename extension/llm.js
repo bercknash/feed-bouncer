@@ -32,12 +32,17 @@ function fbabUserPrompt(f) {
 
 function fbabParseLabel(text) {
   if (!text) return 'unknown';
+  // Reasoning models (qwen3, deepseek-r1...) may emit <think>...</think> first.
+  text = String(text).replace(/<think>[\s\S]*?(<\/think>|$)/gi, '').trim();
   try {
-    const j = JSON.parse(text.trim().replace(/^```(?:json)?|```$/g, ''));
+    const j = JSON.parse(text.replace(/^```(?:json)?|```$/g, '').trim());
     if (j && ['ad', 'suggested', 'organic'].includes(j.label)) return j.label;
   } catch (_) { /* fall through */ }
-  const m = String(text).toLowerCase().match(/\b(ad|suggested|organic)\b/);
-  return m ? m[1] : 'unknown';
+  const lm = text.match(/"label"\s*:\s*"(ad|suggested|organic)"/i);
+  if (lm) return lm[1].toLowerCase();
+  // Otherwise trust the last label word: the final answer comes after any reasoning.
+  const all = text.toLowerCase().match(/\b(ad|suggested|organic)\b/g);
+  return all ? all[all.length - 1] : 'unknown';
 }
 
 // ---------------------------------------------------------- Chrome on-device
@@ -99,14 +104,26 @@ async function fbabClassifyOpenAI(features, cfg) {
     body: JSON.stringify({
       model: cfg.model,
       temperature: 0,
-      max_tokens: 20,
+      max_tokens: 400, // headroom for models that reason before answering
+      response_format: cfg.jsonMode === false ? undefined : { type: 'json_object' },
       messages: [
         { role: 'system', content: FBAB_SYSTEM_PROMPT },
         { role: 'user', content: fbabUserPrompt(features) },
       ],
     }),
   });
-  if (!res.ok) return { label: 'unknown', error: 'HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200) };
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 200);
+    // Some servers reject response_format; retry once without it.
+    if (res.status === 400 && cfg.jsonMode !== false && /response_format|json/i.test(body)) {
+      return fbabClassifyOpenAI(features, { ...cfg, jsonMode: false });
+    }
+    let hint = '';
+    if (res.status === 403 && /localhost|127\.0\.0\.1/.test(base)) {
+      hint = ' (Ollama is rejecting the extension origin: restart it with OLLAMA_ORIGINS="chrome-extension://*")';
+    }
+    return { label: 'unknown', error: 'HTTP ' + res.status + ' ' + body + hint };
+  }
   const j = await res.json();
   const out = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
   return { label: fbabParseLabel(out), raw: out };

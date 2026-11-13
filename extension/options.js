@@ -58,7 +58,11 @@ async function test() {
       return;
     }
     if (avail === 'unavailable') {
-      out('The on-device model is unavailable on this device (hardware requirements not met). Pick a custom endpoint instead.');
+      out('Chrome says the on-device model is unavailable here (see chrome://on-device-internals for the reason).\n\n'
+        + 'Free local alternative: install Ollama (https://ollama.com), run\n'
+        + '  ollama pull qwen2.5:3b\n'
+        + 'then choose "OpenAI-compatible endpoint" with\n'
+        + '  Base URL: http://localhost:11434/v1\n  Model: qwen2.5:3b\n  API key: (leave blank)');
       return;
     }
     if (avail !== 'available') {
