@@ -316,6 +316,50 @@
       .some((line) => line.length <= 80 && TIMESTAMP_RES.some((re) => re.test(line)));
   }
   const LABEL_GRACE_MS = 2000;
+  const GLYPH_AD_MAX_RATIO = 2.0;
+  const GLYPH_TIMESTAMP_MIN_RATIO = 3.0;
+  let narrowTimestampSeen = false;
+
+  // The SVG glyph image in the "Ad" / "2 hours ago" slot under the author name.
+  function metaGlyph(unit) {
+    const top = unit.getBoundingClientRect().top;
+    for (const span of unit.querySelectorAll('a span[aria-labelledby]')) {
+      const use = span.querySelector('svg use');
+      if (!use) continue;
+      const r = use.getBoundingClientRect();
+      if (r.height < 6 || r.width < 1 || r.top - top > HEADER_HEIGHT_PX) continue;
+      return { ratio: r.width / r.height, span };
+    }
+    return null;
+  }
+
+  // Readable text behind the glyph, read without layout (works while hidden).
+  function metaLabelText(unit) {
+    const span = unit.querySelector('a span[aria-labelledby]');
+    if (!span) return '';
+    const t = document.getElementById(span.getAttribute('aria-labelledby').split(/\s+/)[0]);
+    return (t && t.textContent || '').trim();
+  }
+
+  // Undo a glyph-based hide if the label later turns out to be a timestamp.
+  function recheckGlyphHides() {
+    for (const unit of document.querySelectorAll('[data-fbab-reason="glyph"]')) {
+      if (unit.getAttribute('data-fbab') === 'revealed') continue;
+      const txt = metaLabelText(unit);
+      if (!txt) continue;
+      if (hasTimestamp('', [txt])) {
+        narrowTimestampSeen = true;
+        stats.hiddenAds--;
+        unit.removeAttribute('data-fbab');
+        unit.removeAttribute('data-fbab-reason');
+        unit.removeAttribute('data-fbab-label');
+        state.delete(unit);
+        log('glyph rule was wrong; restored post and disabled the width rule', txt);
+      } else if (hasSponsoredLabel('', [txt])) {
+        unit.setAttribute('data-fbab-reason', 'label'); // confirmed by the readable label
+      }
+    }
+  }
   // Reels / People-you-may-know / suggested-groups carousels: no timestamp by design.
   const CAROUSEL_LABEL_RE = /^(reels|previous items|next items|people you may know|suggested groups|stories)$|^reel by /i;
   function isCarousel(unit) {
@@ -410,6 +454,21 @@
       return;
     }
 
+    // 1b. Glyph-shape fast path. The line under the author is an SVG glyph image
+    // that is drawn immediately, while its readable aria label is filled in lazily
+    // (often seconds later). "Ad" draws as a roughly square glyph (17x15 px);
+    // timestamps ("2 days ago") are 4x wider than tall or more.
+    const glyph = metaGlyph(unit);
+    if (glyph && glyph.ratio < GLYPH_AD_MAX_RATIO) {
+      if (hasTimestamp(header.text, hints)) {
+        narrowTimestampSeen = true; // short timestamps exist here: width rule is unsafe
+      } else if (!narrowTimestampSeen) {
+        stats.label++;
+        hide(unit, 'ad', 'glyph');
+        return;
+      }
+    }
+
     // 2. Cheap triage: most of the feed is decided here without the model.
     const buttons = buttonLabels(unit);
     const headerLines = header.text.split('\n').slice(0, 3).join('\n');
@@ -420,7 +479,11 @@
     }
     // A timestamp where an ad would say "Ad" means a normal post, even if it has a
     // "Learn more" button (link previews carry those).
-    if (hasTimestamp(header.text, hints) || carousel) {
+    // A wide glyph in the label slot is a timestamp ("2 days ago"). If it were a
+    // long ad label instead, the readable-label check above hides it once Facebook
+    // fills the label in, so the worst case is a delay, never a false hide.
+    const wideGlyph = glyph && glyph.ratio >= GLYPH_TIMESTAMP_MIN_RATIO;
+    if (hasTimestamp(header.text, hints) || carousel || wideGlyph) {
       stats.skippedAI++;
       if (settings.debug) unit.setAttribute('data-fbab-debug', 'organic');
       return;
@@ -466,6 +529,7 @@
     if (!settings.enabled) return;
     visCache.clear();
     clipCache.clear();
+    recheckGlyphHides();
     const vh = window.innerHeight || 800;
     for (const unit of findUnits()) {
       if (unit.hasAttribute('data-fbab')) continue;

@@ -19,8 +19,9 @@
 <body>
 <svg width="0" height="0" style="position:absolute"><defs><text id="lbl-svg">Sponsored</text></defs></svg>
 <span id="aria-lbl" style="display:none">Sponsored</span>
-<div style="position:absolute;left:-9999px"><span id="lbl-ad">Ad</span><span id="lbl-ago">2 hours ago</span></div>
-<svg width="0" height="0" style="position:absolute"><defs><g id="glyphs-1"><path d="M0 0h5v5z"/></g><g id="glyphs-2"><path d="M0 0h5v5z"/></g></defs></svg>
+<div style="position:absolute;left:-9999px"><span id="lbl-ad">Ad</span><span id="lbl-ago">2 hours ago</span><span id="lbl-empty1"></span><span id="lbl-empty2"></span><span id="lbl-late"></span></div>
+<svg width="0" height="0" style="position:absolute"><defs><g id="glyphs-1"><path d="M0 0h5v5z"/></g><g id="glyphs-2"><path d="M0 0h5v5z"/></g>
+  <g id="g-narrow"><path d="M0 0h17v15h-17z"/></g><g id="g-wide"><path d="M0 0h67v15h-67z"/></g></defs></svg>
 
 <div role="feed">
   <!-- 1. organic -->
@@ -103,6 +104,30 @@
     </div>
   </div>
 
+  <!-- 7d/7e. Lazy labels: aria label still empty, only the glyph image is drawn -->
+  <div class="post" data-expect="ad" data-name="lazy label, square glyph">
+    <div role="article">
+      <span class="name">Tire Shop</span>
+      <span class="meta"><a href="#q"><span aria-labelledby="lbl-empty1"><svg width="20" height="16"><use href="#g-narrow"></use></svg></span></a> · 🌐</span>
+      <span class="body">Winter tires</span>
+    </div>
+  </div>
+  <div class="post" data-expect="organic" data-name="lazy label, wide glyph">
+    <div role="article">
+      <span class="name">Car Club · Follow</span>
+      <span class="meta"><a href="#r"><span aria-labelledby="lbl-empty2"><svg width="70" height="16"><use href="#g-wide"></use></svg></span></a> · 🌐</span>
+      <span class="body">Track day photos</span>
+    </div>
+  </div>
+  <!-- 7f. Square glyph that later turns out to be a short timestamp: hidden, then restored -->
+  <div class="post" data-expect="organic" data-name="square glyph, label '3h' later">
+    <div role="article">
+      <span class="name">Sam Park</span>
+      <span class="meta"><a href="#s"><span aria-labelledby="lbl-late"><svg width="20" height="16"><use href="#g-narrow"></use></svg></span></a> · 🌐</span>
+      <span class="body">Dinner</span>
+    </div>
+  </div>
+
   <!-- 8. non-English -->
   <div class="post" data-expect="ad" data-name="german">
     <div role="article">
@@ -125,6 +150,9 @@
     d.innerHTML = '<div role="article"><span class="name">Late Ad</span><span class="meta">S<b class="zero">.</b>ponsored</span><span class="body">hi</span></div>';
     document.querySelector('[role=feed]').appendChild(d);
   }, 600);
+
+  // Facebook fills the lazy label for 7f later: it was a short timestamp all along.
+  setTimeout(() => { document.getElementById('lbl-late').textContent = '3h'; }, 1000);
 
   setTimeout(() => {
     const lines = [];
