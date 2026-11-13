@@ -550,10 +550,17 @@
     }
   }, true);
 
+  // Facebook often attaches the readable "Ad" label by setting aria-labelledby / id
+  // attributes after the post is already on screen, so watch those too.
   new MutationObserver(() => scheduleScan()).observe(document.documentElement, {
     childList: true, subtree: true, characterData: true,
+    attributes: true, attributeFilter: ['aria-labelledby', 'id'],
   });
-  window.addEventListener('scroll', () => scheduleScan(400), { passive: true });
+  window.addEventListener('scroll', () => scheduleScan(150), { passive: true });
+  // Safety net: re-check posts near the viewport every second, so an ad whose label
+  // arrives through some change we don't observe can't sit on screen indefinitely.
+  // Cheap: unchanged posts exit early on their signature.
+  setInterval(() => { if (!document.hidden) scheduleScan(0); }, 1000);
 
   // Exposed for the offline test harness and for poking at from DevTools.
   window.__fbab = { renderedText, hasSponsoredLabel, hasTimestamp, stats, scan, settings: () => settings };

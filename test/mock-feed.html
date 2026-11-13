@@ -128,6 +128,15 @@
     </div>
   </div>
 
+  <!-- 7g. Label attached later purely via an attribute change (aria-labelledby set) -->
+  <div class="post" data-expect="ad" data-name="label attached via attribute">
+    <div role="article">
+      <span class="name">Mind Clinic</span>
+      <span class="meta"><a href="#m"><span id="late-attr"><svg width="60" height="16"><use href="#glyphs-1"></use></svg></span></a> · 🌐</span>
+      <span class="body">Learn more about our program</span>
+    </div>
+  </div>
+
   <!-- 8. non-English -->
   <div class="post" data-expect="ad" data-name="german">
     <div role="article">
@@ -153,6 +162,7 @@
 
   // Facebook fills the lazy label for 7f later: it was a short timestamp all along.
   setTimeout(() => { document.getElementById('lbl-late').textContent = '3h'; }, 1000);
+  setTimeout(() => { document.getElementById('late-attr').setAttribute('aria-labelledby', 'lbl-ad'); }, 900);
 
   setTimeout(() => {
     const lines = [];
