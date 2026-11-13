@@ -1,11 +1,16 @@
 // FB AI Ad Blocker: content script.
 //
-// Strategy: Facebook obfuscates the *DOM* (decoy letters, hidden spans, CSS
-// reordering, SVG <use> indirection) but the *rendered* page is clean, because a
-// human has to be able to read "Sponsored". So we reconstruct the text as it is
-// actually laid out on screen (per-glyph rects, hidden glyphs dropped, sorted by
-// position) and decide from that:
-//   1. fast path: a "Sponsored" label in the post header  -> ad, no AI needed
+// Primary path: page.js (page world) reads Facebook's own feed data out of React
+// and stamps data-fbab-verdict="ad|organic|unknown" on each post as it mounts.
+// We hide "ad" posts in the same frame, before they are painted.
+//
+// Fallback, for posts page.js could not judge (other surfaces, or Facebook
+// renamed its fields): Facebook obfuscates the *DOM* (decoy letters, hidden
+// spans, CSS reordering, SVG <use> indirection) but the *rendered* page is clean,
+// because a human has to be able to read "Sponsored". So we reconstruct the text
+// as it is actually laid out on screen (per-glyph rects, hidden glyphs dropped,
+// sorted by position) and decide from that:
+//   1. a "Sponsored" label in the post header  -> ad, no AI needed
 //   2. otherwise: send the rendered header/body/buttons to an LLM classifier
 (() => {
   'use strict';
@@ -22,6 +27,7 @@
     debug: false,
   };
   let settings = { ...DEFAULTS };
+  let settingsReady = false; // don't hide anything until we know the extension is enabled
 
   // "Sponsored" in the languages Facebook uses most. Matched only against the
   // post *header*, so ordinary body text that mentions the word is not affected.
@@ -39,18 +45,18 @@
   const SPONSORED_TIDY = SPONSORED_WORDS.map((w) => w.normalize('NFKC').toLowerCase());
   const HEADER_HEIGHT_PX = 110; // the author line + "Sponsored · 🌐" line
 
-  const stats = { scanned: 0, hiddenAds: 0, hiddenSuggested: 0, aiCalls: 0, label: 0, skippedAI: 0 };
+  const stats = { scanned: 0, hiddenAds: 0, hiddenSuggested: 0, aiCalls: 0, label: 0, skippedAI: 0, data: 0, dataMissed: 0 };
   const state = new WeakMap(); // unit -> { sig, verdict }
 
   const log = (...a) => settings.debug && console.log('[fbab]', ...a);
 
   // ---------------------------------------------------------------- settings
   async function loadSettings() {
-    if (!hasChrome) return;
     try {
+      if (!hasChrome) return;
       const s = await chrome.storage.sync.get(DEFAULTS);
       settings = { ...DEFAULTS, ...s };
-    } catch (e) { /* extension reloaded; keep defaults */ }
+    } catch (e) { /* extension reloaded; keep defaults */ } finally { settingsReady = true; }
   }
   if (hasChrome) {
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -65,7 +71,9 @@
       scheduleScan();
     });
     chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-      if (msg && msg.type === 'stats') reply({ ...stats, url: location.href });
+      if (msg && msg.type === 'stats') {
+        reply({ ...stats, feedData: document.documentElement.getAttribute('data-fbab-data'), url: location.href });
+      }
     });
   }
 
@@ -376,6 +384,31 @@
     return (h >>> 0).toString(36);
   }
 
+  // ------------------------------------------------- verdicts from page.js
+  const VERDICT_ATTR = 'data-fbab-verdict';
+  function dataVerdict(unit) {
+    const el = unit.closest(`[${VERDICT_ATTR}]`) || unit.querySelector(`[${VERDICT_ATTR}]`);
+    return el ? el.getAttribute(VERDICT_ATTR) : null;
+  }
+  // Called synchronously from the mutation observer, so the post is hidden in
+  // the same frame page.js marked it.
+  function applyVerdict(el) {
+    if (!settingsReady || !settings.enabled) return;
+    const verdict = el.getAttribute(VERDICT_ATTR);
+    if (verdict === 'ad') {
+      if (el.closest('[data-fbab]') || el.querySelector('[data-fbab]')) return; // already decided
+      stats.data++;
+      hide(el, 'ad', 'data');
+    } else if (el.getAttribute('data-fbab-reason') === 'data' && el.hasAttribute('data-fbab')) {
+      // React reused this element for a different post.
+      if (el.getAttribute('data-fbab') !== 'revealed') stats.hiddenAds--;
+      for (const a of ['data-fbab', 'data-fbab-reason', 'data-fbab-label']) el.removeAttribute(a);
+    }
+  }
+  function applyAllVerdicts() {
+    document.querySelectorAll(`[${VERDICT_ATTR}="ad"]`).forEach(applyVerdict);
+  }
+
   // ---------------------------------------------------------------- deciding
   function hide(unit, label, reason) {
     if (label === 'ad') stats.hiddenAds++; else stats.hiddenSuggested++;
@@ -436,7 +469,10 @@
   }
 
   async function evaluate(unit) {
-    if (unit.hasAttribute('data-fbab')) return; // already decided
+    if (unit.closest('[data-fbab]')) return; // already decided (here or on its wrapper)
+    const verdict = dataVerdict(unit); // from Facebook's own feed data, via page.js
+    if (verdict === 'ad') { stats.data++; hide(unit, 'ad', 'data'); return; }
+    const knownOrganic = verdict === 'organic';
     const header = renderedText(unit, HEADER_HEIGHT_PX);
     if (!header.text) return; // not rendered yet / placeholder skeleton
     const hints = ariaHints(unit);
@@ -450,6 +486,7 @@
     // 1. Deterministic fast path.
     if (hasSponsoredLabel(header.text, hints) || unit.querySelector('a[href*="/ads/about"]')) {
       stats.label++;
+      if (knownOrganic) stats.dataMissed++; // the feed data said "not an ad": field names changed?
       hide(unit, 'ad', 'label');
       return;
     }
@@ -459,7 +496,7 @@
     // (often seconds later). "Ad" draws as a roughly square glyph (17x15 px);
     // timestamps ("2 days ago") are 4x wider than tall or more.
     const glyph = metaGlyph(unit);
-    if (glyph && glyph.ratio < GLYPH_AD_MAX_RATIO) {
+    if (!knownOrganic && glyph && glyph.ratio < GLYPH_AD_MAX_RATIO) {
       if (hasTimestamp(header.text, hints)) {
         narrowTimestampSeen = true; // short timestamps exist here: width rule is unsafe
       } else if (!narrowTimestampSeen) {
@@ -483,7 +520,7 @@
     // long ad label instead, the readable-label check above hides it once Facebook
     // fills the label in, so the worst case is a delay, never a false hide.
     const wideGlyph = glyph && glyph.ratio >= GLYPH_TIMESTAMP_MIN_RATIO;
-    if (hasTimestamp(header.text, hints) || carousel || wideGlyph) {
+    if (knownOrganic || hasTimestamp(header.text, hints) || carousel || wideGlyph) {
       stats.skippedAI++;
       if (settings.debug) unit.setAttribute('data-fbab-debug', 'organic');
       return;
@@ -529,6 +566,7 @@
     if (!settings.enabled) return;
     visCache.clear();
     clipCache.clear();
+    applyAllVerdicts();
     recheckGlyphHides();
     const vh = window.innerHeight || 800;
     for (const unit of findUnits()) {
@@ -552,9 +590,14 @@
 
   // Facebook often attaches the readable "Ad" label by setting aria-labelledby / id
   // attributes after the post is already on screen, so watch those too.
-  new MutationObserver(() => scheduleScan()).observe(document.documentElement, {
+  new MutationObserver((records) => {
+    for (const rec of records) {
+      if (rec.attributeName === VERDICT_ATTR) applyVerdict(rec.target);
+    }
+    scheduleScan();
+  }).observe(document.documentElement, {
     childList: true, subtree: true, characterData: true,
-    attributes: true, attributeFilter: ['aria-labelledby', 'id'],
+    attributes: true, attributeFilter: ['aria-labelledby', 'id', VERDICT_ATTR],
   });
   window.addEventListener('scroll', () => scheduleScan(150), { passive: true });
   // Safety net: re-check posts near the viewport every second, so an ad whose label

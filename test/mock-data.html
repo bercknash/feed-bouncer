@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>fbab mock feed data</title>
+<link rel="stylesheet" href="../extension/content.css">
+<style>
+  body { font: 15px/1.3 Arial, sans-serif; width: 600px; }
+  .post { border: 1px solid #ccc; margin: 10px 0; padding: 10px; }
+  .name { font-weight: bold; display: block; }
+  .meta { font-size: 13px; color: #65676b; display: block; }
+</style>
+</head>
+<body>
+<!-- Tests the instant path: page.js reads a (fake) React fiber tree shaped like
+     Facebook's, stamps verdicts, and content.js hides ads before the next frame. -->
+<div style="position:absolute;left:-9999px"><span id="lbl-ad">Ad</span><span id="lbl-empty"></span></div>
+<svg width="0" height="0" style="position:absolute"><defs><g id="g-narrow"><path d="M0 0h17v15h-17z"/></g></defs></svg>
+<div id="mount_0_0_test"><div id="feed"></div></div>
+<pre id="results"></pre>
+<script>
+  // Minimal fiber tree: HostRoot -> App -> FeedList -> [FeedUnit(feedEdge) -> div]*
+  const mount = document.getElementById('mount_0_0_test');
+  const feedEl = document.getElementById('feed');
+  const hostRoot = { type: null, memoizedProps: null, child: null, sibling: null, stateNode: null };
+  hostRoot.stateNode = { current: hostRoot };
+  const list = { type: function FeedList() {}, memoizedProps: { variables: {} }, child: null, sibling: null, return: hostRoot };
+  hostRoot.child = list;
+  mount['__reactContainer$test123'] = hostRoot;
+  let lastUnit = null;
+  const cases = [];
+
+  // Adds a post the way React would: fiber first, then the DOM node, in one task.
+  function addPost(name, expect, edge, metaHtml, opts = {}) {
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="post" aria-posinset="${cases.length + 1}"><span class="name">${name}</span><span class="meta">${metaHtml}</span><span>body text</span></div>`;
+    const host = { type: 'div', memoizedProps: {}, stateNode: el, child: null, sibling: null };
+    const unit = { type: function FeedUnit() {}, memoizedProps: edge === undefined ? {} : { feedEdge: edge, position: cases.length }, child: host, sibling: null };
+    if (lastUnit) lastUnit.sibling = unit; else list.child = unit;
+    lastUnit = unit;
+    feedEl.appendChild(el);
+    const c = { name, expect, el, reason: opts.reason, sameFrame: null };
+    cases.push(c);
+    return c;
+  }
+  const glyph = (id, w) => `<a href="#"><span aria-labelledby="${id}"><svg width="${w}" height="15"><use href="#g-narrow"></use></svg></span></a>`;
+  const story = (extra) => ({ deduplication_key: 'x', node: { __typename: 'Story', __id: 'abc', post_id: '1', ...extra } });
+</script>
+<script src="../extension/page.js"></script>
+<script src="../extension/content.js"></script>
+<script>
+  const hidden = (c) => !!(c.el.closest('[data-fbab]') || c.el.querySelector('[data-fbab]'));
+  const reasonOf = (c) => (c.el.closest('[data-fbab]') || c.el.querySelector('[data-fbab]') || c.el).getAttribute('data-fbab-reason');
+
+  (async () => {
+    await new Promise((r) => setTimeout(r, 100));
+    const added = [
+      // Ads, with no readable label at all: only the data can catch these quickly.
+      addPost('ad, current field name', 'ad', story({ pso_tad_rens: { brs_filter_setting: null } }), glyph('lbl-empty', 60), { reason: 'data' }),
+      addPost('ad, older field name', 'ad', story({ th_dat_spo: { ad_id: '1' } }), '', { reason: 'data' }),
+      addPost('ad, field renamed again', 'ad', story({ tad_nos_resdop: { ad_id: '1' } }), '', { reason: 'data' }),
+      addPost('ad, category only', 'ad', { cat_sensitive: { cat: 'SPONSORED' }, node: { __typename: 'Story' } }, '', { reason: 'data' }),
+      // Organic by data. The square glyph + empty label would trip the old glyph rule.
+      addPost('organic, square glyph', 'organic', story({ pso_tad_rens: null }), glyph('lbl-empty', 17)),
+      addPost('organic, plain', 'organic', story({ pso_tad_rens: null }), '3h · 🌐'),
+      // Data can't tell (field gone): the rendered-label fallback still works.
+      addPost('unknown data, Sponsored label', 'ad', story({}), 'Sponsored · 🌐', { reason: 'label' }),
+      addPost('unknown data, timestamp', 'organic', story({}), '2h · 🌐'),
+      addPost('not a feed edge, Ad label', 'ad', undefined, glyph('lbl-ad', 17), { reason: 'label' }),
+      // Data says organic but the readable label says Ad: label wins, and is counted.
+      addPost('data organic, label Ad', 'ad', story({ pso_tad_rens: null }), glyph('lbl-ad', 17), { reason: 'label' }),
+    ];
+    // Mutation observers are microtasks: by the time a macrotask-free await chain
+    // settles, verdicts must be applied. This runs before any frame is painted.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    for (const c of added) c.sameFrame = hidden(c);
+
+    await new Promise((r) => setTimeout(r, 3200)); // let the slow fallback path finish
+    const lines = [];
+    let pass = 0, total = 0;
+    const check = (ok, text) => { total++; if (ok) pass++; lines.push(`${ok ? 'PASS' : 'FAIL'}  ${text}`); };
+    for (const c of cases) {
+      const got = hidden(c) ? 'ad' : 'organic';
+      const reason = hidden(c) ? reasonOf(c) : '-';
+      const ok = got === c.expect && (!c.reason || c.reason === reason) && (c.reason !== 'data' || c.sameFrame === true);
+      check(ok, `${c.name.padEnd(30)} expect=${c.expect.padEnd(8)} got=${got.padEnd(8)} reason=${String(reason).padEnd(6)} hiddenBeforePaint=${c.sameFrame}`);
+    }
+    const st = window.__fbab.stats;
+    check(st.data === 4, `stats.data = ${st.data} (want 4)`);
+    check(st.dataMissed === 1, `stats.dataMissed = ${st.dataMissed} (want 1)`);
+    check(document.documentElement.getAttribute('data-fbab-data') === '9,4,3,2', `page summary = ${document.documentElement.getAttribute('data-fbab-data')} (want 9,4,3,2)`);
+    const K = window.__fbabPage.isAdDataKey;
+    for (const [k, want] of [['pso_tad_rens', true], ['sponsored_data', true], ['th_dat_spo', true], ['post_id', false],
+      ['feedback', false], ['__fragments', false], ['debug_info', false], ['attachments', false], ['id', false]]) {
+      check(K(k) === want, `isAdDataKey(${k}) = ${K(k)} (want ${want})`);
+    }
+    lines.push(`RESULT ${pass}/${total}`);
+    document.getElementById('results').textContent = lines.join('\n');
+  })();
+</script>
+</body>
+</html>
