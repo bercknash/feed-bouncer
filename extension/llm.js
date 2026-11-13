@@ -61,13 +61,11 @@ async function fbabBuiltinAvailability() {
   return LanguageModel.availability(FBAB_LANG_OPTS);
 }
 
+// Used by the options page to trigger (and show progress of) the model download.
 async function fbabBuiltinSession(onProgress) {
   if (fbabBaseSession) return fbabBaseSession;
   fbabBaseSession = await LanguageModel.create({
     ...FBAB_LANG_OPTS,
-    temperature: 0.1,
-    topK: 1,
-    initialPrompts: [{ role: 'system', content: FBAB_SYSTEM_PROMPT }],
     monitor(m) {
       if (onProgress) m.addEventListener('downloadprogress', (e) => onProgress(e.loaded));
     },
@@ -75,18 +73,34 @@ async function fbabBuiltinSession(onProgress) {
   return fbabBaseSession;
 }
 
-async function fbabClassifyBuiltin(features) {
-  const avail = await fbabBuiltinAvailability();
-  if (avail !== 'available') return { label: 'unknown', error: 'on-device model ' + avail };
-  const base = await fbabBuiltinSession();
-  // Clone so each classification starts from the bare system prompt and the
-  // context window does not fill up over a long scrolling session.
-  const s = await base.clone();
+// One fresh session per classification. We deliberately do NOT clone() a base
+// session: on Chrome 157's CPU backend (OnDeviceModelForceCpuBackend), prompting
+// a clone crashes the model service (SIGSEGV) on the 2nd-3rd use. A fresh session
+// costs about 1 s more per post but has been stable. Results are cached, and most ads
+// are caught by the "Sponsored" label check without reaching the model.
+async function fbabPromptFresh(features) {
+  const s = await LanguageModel.create({
+    ...FBAB_LANG_OPTS,
+    initialPrompts: [{ role: 'system', content: FBAB_SYSTEM_PROMPT }],
+  });
   try {
     const out = await s.prompt(fbabUserPrompt(features), { responseConstraint: FBAB_SCHEMA });
     return { label: fbabParseLabel(out), raw: out };
   } finally {
     s.destroy();
+  }
+}
+
+async function fbabClassifyBuiltin(features) {
+  const avail = await fbabBuiltinAvailability();
+  if (avail !== 'available') return { label: 'unknown', error: 'on-device model ' + avail };
+  try {
+    return await fbabPromptFresh(features);
+  } catch (e) {
+    // The model service may have just restarted; one retry.
+    console.warn('[fbab] on-device prompt failed, retrying once:', e);
+    await new Promise((r) => setTimeout(r, 500));
+    return fbabPromptFresh(features);
   }
 }
 

@@ -311,7 +311,9 @@
     });
   }
   function pumpAI() {
-    while (aiInFlight < 2 && aiQueue.length) {
+    // On-device model: one at a time (CPU-bound; parallel sessions untested for stability).
+    const maxInFlight = settings.provider === 'builtin' ? 1 : 2;
+    while (aiInFlight < maxInFlight && aiQueue.length) {
       const { features, resolve } = aiQueue.shift();
       aiInFlight++;
       stats.aiCalls++;
