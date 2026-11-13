@@ -315,8 +315,16 @@
     return headerText.split('\n').concat(hints)
       .some((line) => line.length <= 80 && TIMESTAMP_RES.some((re) => re.test(line)));
   }
-  const CTA_RE = /^(shop now|learn more|sign up|install now|install|get offer|book now|send message|apply now|get quote|download|order now|contact us|subscribe|watch more|play game|use app|get directions|call now|see menu|donate now|listen now|request time|get showtimes|buy tickets|get started|try for free|see more offers|send whatsapp message)$/i;
-  const SUGGESTED_RE = /\b(suggested for you|people you may know|suggested groups|reels and short videos|follow|join)\b/i;
+  const LABEL_GRACE_MS = 2000;
+  // Reels / People-you-may-know / suggested-groups carousels: no timestamp by design.
+  const CAROUSEL_LABEL_RE = /^(reels|previous items|next items|people you may know|suggested groups|stories)$|^reel by /i;
+  function isCarousel(unit) {
+    for (const el of unit.querySelectorAll('[aria-label]')) {
+      if (CAROUSEL_LABEL_RE.test(el.getAttribute('aria-label').trim())) return true;
+    }
+    return false;
+  }
+  const SUGGESTED_RE =/\b(suggested for you|people you may know|suggested groups|reels and short videos|follow|join)\b/i;
 
   function hash(s) {
     let h = 2166136261;
@@ -336,17 +344,44 @@
 
   let aiInFlight = 0;
   const aiQueue = [];
-  function askAI(features) {
+  function askAI(features, unit) {
     return new Promise((resolve) => {
-      aiQueue.push({ features, resolve });
+      aiQueue.push({ features, unit, resolve });
       pumpAI();
     });
+  }
+  // Distance from the viewport (0 = on screen). Used to serve what the user is
+  // looking at first and to drop work for posts they've scrolled far past.
+  function viewportDistance(unit) {
+    const r = unit.getBoundingClientRect();
+    const vh = window.innerHeight || 800;
+    if (r.height === 0) return Infinity;
+    if (r.bottom < 0) return -r.bottom;
+    if (r.top > vh) return r.top - vh;
+    return 0;
+  }
+  function nextAIJob() {
+    let best = -1, bestD = Infinity;
+    for (let i = aiQueue.length - 1; i >= 0; i--) {
+      const job = aiQueue[i];
+      const d = job.unit.isConnected && !job.unit.hasAttribute('data-fbab') ? viewportDistance(job.unit) : Infinity;
+      if (d > (window.innerHeight || 800) * 3) { // decided, gone, or far away: drop
+        aiQueue.splice(i, 1);
+        job.resolve({ label: 'unknown', skipped: true });
+        if (best > i) best--;
+        continue;
+      }
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best < 0 ? null : aiQueue.splice(best, 1)[0];
   }
   function pumpAI() {
     // On-device model: one at a time (CPU-bound; parallel sessions untested for stability).
     const maxInFlight = settings.provider === 'builtin' ? 1 : 2;
     while (aiInFlight < maxInFlight && aiQueue.length) {
-      const { features, resolve } = aiQueue.shift();
+      const job = nextAIJob();
+      if (!job) break;
+      const { features, resolve } = job;
       aiInFlight++;
       stats.aiCalls++;
       chrome.runtime.sendMessage({ type: 'classify', features })
@@ -377,15 +412,25 @@
 
     // 2. Cheap triage: most of the feed is decided here without the model.
     const buttons = buttonLabels(unit);
-    const hasCta = buttons.some((b) => CTA_RE.test(b));
     const headerLines = header.text.split('\n').slice(0, 3).join('\n');
-    if (settings.hideSuggested && SUGGESTED_RE.test(headerLines)) {
+    const carousel = isCarousel(unit);
+    if (settings.hideSuggested && (SUGGESTED_RE.test(headerLines) || carousel)) {
       hide(unit, 'suggested', 'label');
       return;
     }
-    if (hasTimestamp(header.text, hints) && !hasCta) {
+    // A timestamp where an ad would say "Ad" means a normal post, even if it has a
+    // "Learn more" button (link previews carry those).
+    if (hasTimestamp(header.text, hints) || carousel) {
       stats.skippedAI++;
       if (settings.debug) unit.setAttribute('data-fbab-debug', 'organic');
+      return;
+    }
+    // Facebook fills the hidden "Ad" / "2 hours ago" label lazily as the post nears
+    // the viewport. Give it a moment before paying for an AI call.
+    if (!st.firstUnsure) st.firstUnsure = performance.now();
+    if (performance.now() - st.firstUnsure < LABEL_GRACE_MS) {
+      st.sig = null; // force re-evaluation
+      setTimeout(() => scheduleScan(0), 400);
       return;
     }
 
@@ -401,7 +446,8 @@
       body: body.trim(),
       buttons,
     };
-    const res = await askAI(features);
+    const res = await askAI(features, unit);
+    if (res.skipped) { st.sig = null; return; } // dropped from queue; re-evaluate if it comes back into view
     if (state.get(unit) !== st || st.sig !== sig || unit.hasAttribute('data-fbab')) return; // stale
     log('ai', res.label, features);
     if (res.label === 'ad') hide(unit, 'ad', 'AI');
