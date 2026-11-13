@@ -19,7 +19,8 @@ const PROVIDERS = { builtin: 'Chrome on-device AI', openai: 'Custom endpoint', n
     if (!st) return;
     $('stats').innerHTML = '';
     for (const [k, label] of [['hiddenAds', 'Ads hidden'], ['hiddenSuggested', 'Suggested hidden'],
-      ['label', '…via “Sponsored” label'], ['aiCalls', 'AI calls'], ['scanned', 'Posts checked']]) {
+      ['label', '…via “Sponsored” label'], ['skippedAI', 'Normal posts (no AI needed)'],
+      ['aiCalls', 'AI calls'], ['scanned', 'Posts checked']]) {
       const row = document.createElement('div');
       row.innerHTML = '<span></span><b></b>';
       row.children[0].textContent = label;

@@ -39,7 +39,7 @@
   const SPONSORED_TIDY = SPONSORED_WORDS.map((w) => w.normalize('NFKC').toLowerCase());
   const HEADER_HEIGHT_PX = 110; // the author line + "Sponsored · 🌐" line
 
-  const stats = { scanned: 0, hiddenAds: 0, hiddenSuggested: 0, aiCalls: 0, label: 0 };
+  const stats = { scanned: 0, hiddenAds: 0, hiddenSuggested: 0, aiCalls: 0, label: 0, skippedAI: 0 };
   const state = new WeakMap(); // unit -> { sig, verdict }
 
   const log = (...a) => settings.debug && console.log('[fbab]', ...a);
@@ -286,6 +286,22 @@
     return false;
   }
 
+  // ---- Cheap pre-AI triage. Organic posts show a timestamp where ads show
+  // "Sponsored"; ads often carry a call-to-action button. Only posts that lack a
+  // timestamp or have a CTA go to the (slow) model.
+  const TIMESTAMP_RES = [
+    /(^|[\s·•])\d{1,3}\s?(s|m|h|d|w|y|sec|min|mins|hr|hrs|wk|wks|yr|yrs)(?![\p{L}])/iu, // 3h, 15m, 2d, 1w
+    /\b(just now|yesterday|today)\b/i,
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i, // October 2
+    /\b\d{1,2}\.?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b/i, // 2 October
+    /\b\d{1,2}:\d{2}\b/, // 4:12 PM
+  ];
+  function hasTimestamp(headerText) {
+    return headerText.split('\n').some((line) => line.length <= 80 && TIMESTAMP_RES.some((re) => re.test(line)));
+  }
+  const CTA_RE = /^(shop now|learn more|sign up|install now|install|get offer|book now|send message|apply now|get quote|download|order now|contact us|subscribe|watch more|play game|use app|get directions|call now|see menu|donate now|listen now|request time|get showtimes|buy tickets|get started|try for free|see more offers|send whatsapp message)$/i;
+  const SUGGESTED_RE = /\b(suggested for you|people you may know|suggested groups|reels and short videos|follow|join)\b/i;
+
   function hash(s) {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -343,7 +359,21 @@
       return;
     }
 
-    // 2. AI.
+    // 2. Cheap triage: most of the feed is decided here without the model.
+    const buttons = buttonLabels(unit);
+    const hasCta = buttons.some((b) => CTA_RE.test(b));
+    const headerLines = header.text.split('\n').slice(0, 3).join('\n');
+    if (settings.hideSuggested && SUGGESTED_RE.test(headerLines)) {
+      hide(unit, 'suggested', 'label');
+      return;
+    }
+    if (hasTimestamp(header.text) && !hasCta) {
+      stats.skippedAI++;
+      if (settings.debug) unit.setAttribute('data-fbab-debug', 'organic');
+      return;
+    }
+
+    // 3. AI, only for suspicious posts (no timestamp, or a call-to-action button).
     if (!hasChrome || settings.provider === 'none') {
       if (settings.debug) unit.setAttribute('data-fbab-debug', 'organic');
       return;
@@ -353,7 +383,7 @@
     const features = {
       header: header.text.slice(0, 300),
       body: body.trim(),
-      buttons: buttonLabels(unit),
+      buttons,
     };
     const res = await askAI(features);
     if (state.get(unit) !== st || st.sig !== sig || unit.hasAttribute('data-fbab')) return; // stale
@@ -400,7 +430,7 @@
   window.addEventListener('scroll', () => scheduleScan(400), { passive: true });
 
   // Exposed for the offline test harness and for poking at from DevTools.
-  window.__fbab = { renderedText, hasSponsoredLabel, stats, scan, settings: () => settings };
+  window.__fbab = { renderedText, hasSponsoredLabel, hasTimestamp, stats, scan, settings: () => settings };
 
   loadSettings().then(scan);
 })();
