@@ -1,0 +1,25 @@
+/* We never remove or insert nodes inside Facebook's React tree (that causes
+   crashes and re-renders). We only set data attributes and let CSS hide things. */
+[data-fbab="hidden"] { display: none !important; }
+
+[data-fbab="collapsed"] > * { display: none !important; }
+[data-fbab="collapsed"] {
+  cursor: pointer !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+[data-fbab="collapsed"]::before {
+  content: "🚫 " attr(data-fbab-label) " hidden (" attr(data-fbab-reason) ") · click to show";
+  display: block;
+  padding: 6px 12px;
+  margin: 4px 0;
+  font: 12px/1.4 system-ui, sans-serif;
+  color: #65676b;
+  background: rgba(127, 127, 127, 0.08);
+  border-radius: 8px;
+}
+[data-fbab="revealed"] { outline: 2px solid rgba(220, 0, 0, 0.6) !important; }
+
+/* Debug mode outlines */
+[data-fbab-debug="organic"] { outline: 2px solid rgba(0, 160, 0, 0.6) !important; }
+[data-fbab-debug="pending"] { outline: 2px dashed rgba(200, 140, 0, 0.8) !important; }

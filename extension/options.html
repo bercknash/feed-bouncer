@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FB AI Ad Blocker settings</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; color: #1c1e21; }
+  fieldset { border: 1px solid #dddfe2; border-radius: 8px; margin: 16px 0; padding: 12px 16px; }
+  legend { font-weight: 600; padding: 0 4px; }
+  label { display: block; margin: 8px 0; }
+  input[type=text], input[type=password], select { width: 100%; padding: 6px; box-sizing: border-box; }
+  .muted { color: #65676b; font-size: 13px; }
+  button { padding: 6px 14px; margin-right: 8px; }
+  pre { background: #f0f2f5; padding: 8px; border-radius: 6px; white-space: pre-wrap; }
+  #openaiFields[hidden] { display: none; }
+</style>
+</head>
+<body>
+  <h1>FB AI Ad Blocker</h1>
+
+  <fieldset>
+    <legend>Classifier</legend>
+    <p class="muted">Every post is first checked for a rendered “Sponsored” label, which is free and instant.
+      Posts that don’t have one go to the AI classifier you pick here.</p>
+    <label>Provider
+      <select id="provider">
+        <option value="builtin">Chrome on-device AI (Gemini Nano): free, private, no key</option>
+        <option value="openai">OpenAI-compatible endpoint (Ollama, OpenRouter, OpenAI, Meta Llama API…)</option>
+        <option value="none">None: “Sponsored” label check only</option>
+      </select>
+    </label>
+    <div id="openaiFields">
+      <label>Base URL <input type="text" id="baseUrl" placeholder="http://localhost:11434/v1"></label>
+      <label>Model <input type="text" id="model" placeholder="llama3.2:3b"></label>
+      <label>API key (stored locally, never synced) <input type="password" id="apiKey"></label>
+      <p class="muted">Post text (author names, captions) is sent to this endpoint. A local Ollama keeps it on your machine.</p>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Behavior</legend>
+    <label><input type="checkbox" id="hideSuggested"> Also hide “Suggested for you” / non-followed posts</label>
+    <label><input type="checkbox" id="showPlaceholder"> Leave a small “Ad hidden · click to show” bar (handy for spotting mistakes)</label>
+    <label><input type="checkbox" id="debug"> Debug: outline checked posts and log decisions to the page console</label>
+  </fieldset>
+
+  <button id="save">Save</button>
+  <button id="test">Test classifier</button>
+  <span id="status" class="muted"></span>
+  <pre id="out" hidden></pre>
+
+  <script src="llm.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

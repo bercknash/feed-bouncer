@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "FB AI Ad Blocker",
+  "version": "0.1.0",
+  "description": "Hides Facebook ads by reading each post as rendered and asking an LLM (on-device by default).",
+  "minimum_chrome_version": "138",
+  "permissions": ["storage", "offscreen"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://*.facebook.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "FB AI Ad Blocker" },
+  "options_page": "options.html"
+}
