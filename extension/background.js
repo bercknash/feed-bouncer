@@ -36,8 +36,23 @@ async function ensureOffscreen() {
   await creatingOffscreen;
 }
 
+let swBuiltinBroken = false;
 async function classifyBuiltin(features) {
-  if (fbabHasBuiltin()) return fbabClassifyBuiltin(features);
+  if (fbabHasBuiltin() && !swBuiltinBroken) {
+    let timer;
+    const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('sw-timeout')), 30000); });
+    try {
+      return await Promise.race([fbabClassifyBuiltin(features), timeout]);
+    } catch (e) {
+      if (!(e && e.message === 'sw-timeout')) throw e;
+      // Model stalled in the service worker: use the offscreen document from now on.
+      console.warn('[fbab] on-device model stalled in service worker; switching to offscreen document');
+      swBuiltinBroken = true;
+      fbabBaseSession = null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   await ensureOffscreen();
   return chrome.runtime.sendMessage({ target: 'offscreen', type: 'classify', features });
 }

@@ -10,6 +10,10 @@ const SAMPLES = [
 
 function show(msg) { $('status').textContent = msg; }
 function out(text) { $('out').hidden = false; $('out').textContent = text; }
+function step(text) { $('out').hidden = false; $('out').textContent += ($('out').textContent ? '\n' : '') + text; }
+function withTimeout(p, ms, what) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' timed out after ' + ms / 1000 + 's')), ms))]);
+}
 
 function syncProviderFields() { $('openaiFields').hidden = $('provider').value !== 'openai'; }
 
@@ -39,20 +43,28 @@ async function save() {
     debug: $('debug').checked,
   });
   await chrome.storage.local.set({ apiKey: $('apiKey').value });
-  await chrome.runtime.sendMessage({ type: 'clearCache' });
+  try {
+    await withTimeout(chrome.runtime.sendMessage({ type: 'clearCache' }), 5000, 'Contacting the background worker');
+  } catch (e) {
+    show('Saved, but the background worker did not respond. Reload the extension in chrome://extensions.');
+    return true;
+  }
   show('Saved.');
   return true;
 }
 
 async function test() {
+  out('');
+  step('Saving settings…');
   if (!(await save())) return;
   const provider = $('provider').value;
   if (provider === 'none') { out('AI is off. Only the “Sponsored” label check runs.'); return; }
 
   if (provider === 'builtin') {
     // Creating the session here (with a user gesture) is what triggers the model download.
-    const avail = await fbabBuiltinAvailability();
-    out('On-device model availability: ' + avail);
+    step('Asking Chrome whether the on-device model is available…');
+    const avail = await withTimeout(fbabBuiltinAvailability(), 15000, 'LanguageModel.availability()');
+    step('On-device model availability: ' + avail);
     if (avail === 'unsupported') {
       out('This Chrome does not expose the Prompt API (LanguageModel).\nNeeds Chrome 138+ on desktop with enough disk/GPU or RAM. See chrome://on-device-internals');
       return;
@@ -72,21 +84,23 @@ async function test() {
   }
 
   show('Running test posts…');
+  step('Running ' + SAMPLES.length + ' sample posts through the background worker (the first one also starts the model)…');
   const lines = [];
   let correct = 0;
   for (const s of SAMPLES) {
     const t0 = performance.now();
-    const res = await chrome.runtime.sendMessage({ type: 'classify', features: s.features });
+    const res = await withTimeout(chrome.runtime.sendMessage({ type: 'classify', features: s.features }), 60000, 'Classifying a sample post');
     const ms = Math.round(performance.now() - t0);
     const ok = res.label === s.expect;
     if (ok) correct++;
     lines.push(`${ok ? '✔' : '✘'} expected ${s.expect.padEnd(9)} got ${String(res.label).padEnd(9)} ${ms}ms  ${s.features.header.split('\n')[0]}${res.error ? '  ERROR: ' + res.error : ''}`);
   }
-  out(lines.join('\n'));
+  step('');
+  step(lines.join('\n'));
   show(`${correct}/${SAMPLES.length} correct`);
 }
 
 $('provider').addEventListener('change', syncProviderFields);
 $('save').addEventListener('click', save);
-$('test').addEventListener('click', () => test().catch((e) => out('Error: ' + (e && e.message || e))));
+$('test').addEventListener('click', () => test().catch((e) => { step('Error: ' + (e && e.message || e)); show('Test failed'); }));
 load();
