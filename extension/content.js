@@ -236,18 +236,31 @@
     }).join('\n');
   }
 
-  // Accessible-name hints Facebook sometimes uses for the label.
+  // Facebook (2026) draws the line under the author name ("2 hours ago" / "Ad")
+  // as an SVG glyph image and puts the readable text in a hidden element that the
+  // link points to via aria-labelledby. Read those, but only in the header area so
+  // comment timestamps further down don't count.
   function ariaHints(root) {
     const out = [];
+    const top = root.getBoundingClientRect().top;
     for (const el of root.querySelectorAll('[aria-labelledby]')) {
+      const r = el.getBoundingClientRect();
+      if (r.height < 1 || r.top - top > HEADER_HEIGHT_PX) continue;
       for (const id of el.getAttribute('aria-labelledby').split(/\s+/)) {
         const t = document.getElementById(id);
-        if (t && t.textContent) out.push(t.textContent.trim());
+        const txt = t && t.textContent && t.textContent.trim();
+        if (txt && txt.length <= 60) out.push(txt);
       }
-      if (out.length > 20) break;
+      if (out.length >= 8) break;
     }
     return out;
   }
+
+  // Short ad labels. Too ambiguous to match inside a line, so they only count
+  // when a header line or an aria label is exactly this word.
+  const AD_EXACT = new Set(['ad', 'ads', 'anzeige', 'publicité', 'anuncio', 'annuncio', 'advertentie', 'annonce',
+    'reklam', 'reklama', 'реклама', 'mainos', 'hirdetés', 'διαφήμιση', 'quảng cáo', 'iklan', 'annons', 'annonse',
+    '広告', '광고', '广告', '廣告', 'פרסומת', 'إعلان', 'विज्ञापन', 'โฆษณา', 'publicidade', 'reclame'].map(norm));
 
   function buttonLabels(root) {
     const out = new Set();
@@ -269,6 +282,7 @@
     for (const line of headerText.split('\n').concat(hints)) {
       const sq = norm(line); // whitespace removed: defeats per-letter spacing
       if (!sq) continue;
+      if (AD_EXACT.has(sq.replace(/[·•|∙⋅・\-:]+$/u, ''))) return true;
       const t = line.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
       for (let i = 0; i < SPONSORED_NORM.length; i++) {
         const w = SPONSORED_NORM[i];
@@ -295,9 +309,11 @@
     /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i, // October 2
     /\b\d{1,2}\.?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b/i, // 2 October
     /\b\d{1,2}:\d{2}\b/, // 4:12 PM
+    /\b(\d+|an?|one)\s+(second|minute|hour|day|week|month|year)s?\s+ago\b/i, // 2 hours ago (aria label)
   ];
-  function hasTimestamp(headerText) {
-    return headerText.split('\n').some((line) => line.length <= 80 && TIMESTAMP_RES.some((re) => re.test(line)));
+  function hasTimestamp(headerText, hints = []) {
+    return headerText.split('\n').concat(hints)
+      .some((line) => line.length <= 80 && TIMESTAMP_RES.some((re) => re.test(line)));
   }
   const CTA_RE = /^(shop now|learn more|sign up|install now|install|get offer|book now|send message|apply now|get quote|download|order now|contact us|subscribe|watch more|play game|use app|get directions|call now|see menu|donate now|listen now|request time|get showtimes|buy tickets|get started|try for free|see more offers|send whatsapp message)$/i;
   const SUGGESTED_RE = /\b(suggested for you|people you may know|suggested groups|reels and short videos|follow|join)\b/i;
@@ -367,7 +383,7 @@
       hide(unit, 'suggested', 'label');
       return;
     }
-    if (hasTimestamp(header.text) && !hasCta) {
+    if (hasTimestamp(header.text, hints) && !hasCta) {
       stats.skippedAI++;
       if (settings.debug) unit.setAttribute('data-fbab-debug', 'organic');
       return;

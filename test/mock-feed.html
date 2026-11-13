@@ -19,6 +19,8 @@
 <body>
 <svg width="0" height="0" style="position:absolute"><defs><text id="lbl-svg">Sponsored</text></defs></svg>
 <span id="aria-lbl" style="display:none">Sponsored</span>
+<div style="position:absolute;left:-9999px"><span id="lbl-ad">Ad</span><span id="lbl-ago">2 hours ago</span></div>
+<svg width="0" height="0" style="position:absolute"><defs><g id="glyphs-1"><path d="M0 0h5v5z"/></g><g id="glyphs-2"><path d="M0 0h5v5z"/></g></defs></svg>
 
 <div role="feed">
   <!-- 1. organic -->
@@ -84,6 +86,23 @@
     </div>
   </div>
 
+  <!-- 7b/7c. Facebook 2026 real structure: meta line is an SVG glyph image, the
+       readable text lives in a hidden element referenced by aria-labelledby -->
+  <div class="post" data-expect="ad" data-name="fb2026 svg + aria 'Ad'">
+    <div role="article">
+      <span class="name">Shoe Outlet</span>
+      <span class="meta"><a href="#z"><span aria-labelledby="lbl-ad"><svg width="30" height="15"><use href="#glyphs-1"></use></svg></span></a> · 🌐</span>
+      <span class="body">Big sale</span>
+    </div>
+  </div>
+  <div class="post" data-expect="organic" data-name="fb2026 svg + aria 'ago'">
+    <div role="article">
+      <span class="name">Dana Wu</span>
+      <span class="meta"><a href="#w"><span aria-labelledby="lbl-ago"><svg width="70" height="15"><use href="#glyphs-2"></use></svg></span></a> · 🌐</span>
+      <span class="body">Hiking pics</span>
+    </div>
+  </div>
+
   <!-- 8. non-English -->
   <div class="post" data-expect="ad" data-name="german">
     <div role="article">
@@ -126,6 +145,7 @@
       ['Group\n2 Oct at 10:00', true], ['Page\nJust now', true], ['Page\n2d', true],
       ['Acme Shoes\nSponsored · 🌐', false], ['5 Star Shoes\n· 🌐', false], ['Acme\nShop the sale', false],
       ['Acme Running Co.', false],
+      ['2 hours ago', true], ['an hour ago', true], ['5 minutes ago', true], ['Ad', false],
     ];
     for (const [h, want] of TS) {
       total++;
