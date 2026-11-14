@@ -1,4 +1,4 @@
-# Feed Ad Hider
+# Feed Bouncer
 
 A Chrome extension that hides sponsored posts in the Facebook feed the moment they are added to
 the page. It makes no network requests, collects nothing, and asks only for the `storage`
@@ -56,7 +56,7 @@ console under `[fbab]`.
 ## Publish
 
 ```sh
-tools/package.sh         # writes dist/feed-ad-hider-<version>.zip for upload
+tools/package.sh         # writes dist/feed-bouncer-<version>.zip for upload
 ```
 
 `store/listing.md` has the listing text, the permission justifications, and the answers for the

@@ -1,4 +1,4 @@
-// Feed Ad Hider: content script.
+// Feed Bouncer: content script.
 //
 // Primary path: page.js (page world) reads Facebook's own feed data out of React
 // and stamps data-fbab-verdict="ad|organic|unknown" on each post as it mounts.

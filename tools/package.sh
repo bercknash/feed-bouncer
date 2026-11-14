@@ -3,7 +3,7 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$root/extension/manifest.json")"
-out="$root/dist/feed-ad-hider-$version.zip"
+out="$root/dist/feed-bouncer-$version.zip"
 mkdir -p "$root/dist"
 rm -f "$out"
 (cd "$root/extension" && zip -qr -X "$out" . -x '.*')
