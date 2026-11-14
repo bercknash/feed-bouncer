@@ -9,7 +9,7 @@ Paste-ready text for the developer dashboard. Fields marked TODO need something 
 **Summary** (from the manifest, 132 characters max):
 Hides sponsored posts in your Facebook feed the moment they load. No tracking, no network requests, nothing leaves your browser.
 
-**Category:** Productivity (the store has no ad-blocking category under Extensions > Privacy & Security; either is accepted)
+**Category:** pick whichever of Privacy & Security or Productivity the dashboard offers
 
 **Language:** English
 
@@ -30,7 +30,6 @@ What you get
 Privacy
 • No data is collected, stored remotely, or sent anywhere. The extension makes no network requests at all.
 • It runs only on facebook.com.
-• Open source.
 
 Feed Ad Hider is not affiliated with, endorsed by, or sponsored by Meta Platforms, Inc. Facebook is a trademark of Meta Platforms, Inc.
 
