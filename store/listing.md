@@ -57,7 +57,7 @@ The extension's only function is to hide sponsored posts in the FB feed, so its 
 
 **Certifications:** tick all three (no sale of data, no use unrelated to the single purpose, no use for creditworthiness or lending).
 
-**Privacy policy URL:** TODO. Public URL where `PRIVACY.md` is hosted (a public GitHub repo or Pages site works).
+**Privacy policy URL:** https://github.com/bercknash/feed-bouncer/blob/store-release/PRIVACY.md
 
 ## Distribution tab
 
