@@ -1,4 +1,4 @@
-# Feed Ad Hider for Facebook
+# Feed Ad Hider
 
 A Chrome extension that hides sponsored posts in the Facebook feed the moment they are added to
 the page. It makes no network requests, collects nothing, and asks only for the `storage`

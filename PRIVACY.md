@@ -1,4 +1,4 @@
-# Privacy policy: Feed Ad Hider for Facebook
+# Privacy policy: Feed Ad Hider
 
 Last updated: 13 November 2026
 

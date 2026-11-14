@@ -4,7 +4,9 @@ Paste-ready text for the developer dashboard. Fields marked TODO need something 
 
 ## Store listing tab
 
-**Name** (from the manifest): Feed Ad Hider for Facebook
+**Name** (from the manifest): Feed Ad Hider
+
+The name deliberately contains neither "Facebook" nor "Meta". The summary and description do say Facebook, because the listing has to state what the extension works on.
 
 **Summary** (from the manifest, 132 characters max):
 Hides sponsored posts in your Facebook feed the moment they load. No tracking, no network requests, nothing leaves your browser.

@@ -1,7 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Feed Ad Hider for Facebook",
-  "short_name": "Feed Ad Hider",
+  "name": "Feed Ad Hider",
   "version": "1.0.0",
   "description": "Hides sponsored posts in your Facebook feed the moment they load. No tracking, no network requests, nothing leaves your browser.",
   "minimum_chrome_version": "111",
