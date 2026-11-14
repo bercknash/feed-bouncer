@@ -1,7 +1,11 @@
-# FB AI Ad Blocker
+# Feed Ad Hider for Facebook
 
-A Chrome extension that hides Facebook ads the moment they are added to the page, using the
-feed's own data, with a rendered-text and AI fallback.
+A Chrome extension that hides sponsored posts in the Facebook feed the moment they are added to
+the page. It makes no network requests, collects nothing, and asks only for the `storage`
+permission plus access to facebook.com.
+
+This is the store build. The earlier version with an AI classifier is on the
+`worktree-ai-adblock` branch.
 
 ## How it works
 
@@ -24,45 +28,39 @@ Facebook scrambles the field's name now and then (`sponsored_data`, `th_dat_spo`
 below takes over, so the worst case is the old, slower behavior. The popup shows a warning when
 that happens.
 
-### Fallback: read the post as rendered
+### Fallback: the readable label
 
 Used for posts the data can't judge (surfaces other than the main feed, or after a rename).
-Facebook obfuscates the DOM: it splits "Sponsored" into per-letter spans, sprinkles in hidden
-decoy letters, reorders letters with CSS, draws the label via SVG `<use>`, and even plants hidden
-"Sponsored" text in normal posts. None of that changes what's drawn on screen, because people
-still have to be able to read the label.
+Facebook obfuscates the DOM: it splits "Sponsored" into per-letter spans, adds hidden decoy
+letters, reorders letters with CSS, and draws the label as an SVG image. None of that changes
+what's drawn on screen. So `content.js` reconstructs the header text as rendered (per-glyph
+boxes, hidden glyphs dropped, sorted by position), reads the accessibility label behind the
+image, and hides the post if the header carries a standalone "Sponsored" / "Ad" label (about 40
+languages). This path is as slow as Facebook is at filling the label in, usually 1–3 seconds.
 
-So for each feed item the content script:
-
-1. **Reconstructs the visible text.** It measures every glyph's on-screen box, throws away
-   glyphs that are hidden, zero-size, transparent, clipped, or outside the post, then re-sorts
-   the rest by screen position. That gives back what a human reads, e.g. `Acme Shoes ⏎ Sponsored · 🌐`.
-2. **Label check.** If the post header contains a standalone "Sponsored" / "Ad" label (about 40
-   languages), the post is hidden, with no AI call.
-3. **AI.** Otherwise, and only when the feed data gave no verdict, the rendered header, the start
-   of the body, and the button labels go to an LLM that answers `ad` / `suggested` / `organic`.
+The extension never guesses: a post is hidden only when Facebook's data or Facebook's own label
+says it is an ad.
 
 Hidden posts are collapsed to a thin "Ad hidden · click to show" bar (you can turn that off). The
 extension only sets data attributes plus CSS and never adds or removes nodes in Facebook's React
 tree, so it doesn't break the page.
 
-## AI providers
-
-| Provider | Cost | Privacy | Notes |
-|---|---|---|---|
-| **Chrome on-device (Gemini Nano)**, default | Free | Nothing leaves your machine | Chrome 138+ desktop. About a 2–4 GB one-time model download. Needs a decent GPU or ≥16 GB RAM. |
-| OpenAI-compatible endpoint | Depends | Post text is sent to that server | Ollama (`http://localhost:11434/v1`, free and local), OpenRouter, OpenAI, Groq, Meta's Llama/Muse API, etc. |
-| None | Free | Local | Feed data plus the "Sponsored" label check. This catches the main feed's ads on its own. |
-
-## Install
+## Install (unpacked)
 
 1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the `extension/` folder.
-2. Open the extension's **Settings** and click **Test classifier**. With the on-device provider,
-   this click starts the model download and then runs 4 sample posts.
-3. Reload Facebook. The toolbar popup shows how many ads were hidden and how.
+2. Reload Facebook. The toolbar popup shows how many ads were hidden and by which path.
 
-Turn on **Debug** in Settings to outline every checked post (green = kept, orange = waiting on AI)
-and log every decision to the page console under `[fbab]`.
+Turn on **Debug** in Settings to outline every checked post and log decisions to the page
+console under `[fbab]`.
+
+## Publish
+
+```sh
+tools/package.sh         # writes dist/feed-ad-hider-<version>.zip for upload
+```
+
+`store/listing.md` has the listing text, the permission justifications, and the answers for the
+privacy form. `PRIVACY.md` is the privacy policy; the store needs it at a public URL.
 
 ## Tests
 

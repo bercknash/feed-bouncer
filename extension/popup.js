@@ -1,32 +1,35 @@
 const $ = (id) => document.getElementById(id);
-const PROVIDERS = { builtin: 'Chrome on-device AI', openai: 'Custom endpoint', none: 'Label check only (no AI)' };
+
+function addRow(label, value) {
+  const row = document.createElement('div');
+  const name = document.createElement('span');
+  const val = document.createElement('b');
+  name.textContent = label;
+  val.textContent = value;
+  row.append(name, val);
+  $('stats').appendChild(row);
+}
 
 (async () => {
-  const s = await chrome.storage.sync.get({ enabled: true, hideSuggested: false, provider: 'builtin' });
-  $('enabled').checked = s.enabled;
-  $('hideSuggested').checked = s.hideSuggested;
-  $('provider').textContent = 'Classifier: ' + (PROVIDERS[s.provider] || s.provider);
-
+  const s = await chrome.storage.sync.get({ enabled: true, hideSuggested: false });
   for (const k of ['enabled', 'hideSuggested']) {
+    $(k).checked = s[k];
     $(k).addEventListener('change', () => chrome.storage.sync.set({ [k]: $(k).checked }));
   }
   $('opts').addEventListener('click', (e) => { e.preventDefault(); chrome.runtime.openOptionsPage(); });
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !/facebook\.com/.test(tab.url || '')) return;
+  // Works without the "tabs" permission: a tab that isn't running our content
+  // script (anything but Facebook) simply rejects the message.
   try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const st = await chrome.tabs.sendMessage(tab.id, { type: 'stats' });
     if (!st) return;
-    $('stats').innerHTML = '';
-    for (const [k, label] of [['hiddenAds', 'Ads hidden'], ['hiddenSuggested', 'Suggested hidden'],
-      ['data', '…via feed data (instant)'], ['label', '…via “Sponsored” label'], ['skippedAI', 'Normal posts (no AI needed)'],
-      ['aiCalls', 'AI calls'], ['scanned', 'Posts checked']]) {
-      const row = document.createElement('div');
-      row.innerHTML = '<span></span><b></b>';
-      row.children[0].textContent = label;
-      row.children[1].textContent = st[k];
-      $('stats').appendChild(row);
-    }
+    $('stats').textContent = '';
+    addRow('Ads hidden', st.hiddenAds);
+    addRow('…from feed data (instant)', st.data);
+    addRow('…from the “Sponsored” label', st.label);
+    addRow('Suggested hidden', st.hiddenSuggested);
+
     // Health of the instant path: "edges,ads,organic,unknown" from page.js.
     const [edges, , , unknown] = (st.feedData || '').split(',').map(Number);
     const note = document.createElement('div');
@@ -39,5 +42,5 @@ const PROVIDERS = { builtin: 'Chrome on-device AI', openai: 'Custom endpoint', n
       note.textContent = 'Feed data: no feed on this page';
     }
     $('stats').appendChild(note);
-  } catch (_) { /* content script not loaded yet; reload the tab */ }
+  } catch (_) { /* not a Facebook tab, or the tab predates the install: reload it */ }
 })();

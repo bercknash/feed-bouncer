@@ -60,7 +60,7 @@
       addPost('ad, older field name', 'ad', story({ th_dat_spo: { ad_id: '1' } }), '', { reason: 'data' }),
       addPost('ad, field renamed again', 'ad', story({ tad_nos_resdop: { ad_id: '1' } }), '', { reason: 'data' }),
       addPost('ad, category only', 'ad', { cat_sensitive: { cat: 'SPONSORED' }, node: { __typename: 'Story' } }, '', { reason: 'data' }),
-      // Organic by data. The square glyph + empty label would trip the old glyph rule.
+      // Organic by data, whatever the glyph in the label slot looks like.
       addPost('organic, square glyph', 'organic', story({ pso_tad_rens: null }), glyph('lbl-empty', 17)),
       addPost('organic, plain', 'organic', story({ pso_tad_rens: null }), '3h · 🌐'),
       // Data can't tell (field gone): the rendered-label fallback still works.

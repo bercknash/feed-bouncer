@@ -104,22 +104,22 @@
     </div>
   </div>
 
-  <!-- 7d/7e. Lazy labels: aria label still empty, only the glyph image is drawn -->
-  <div class="post" data-expect="ad" data-name="lazy label, square glyph">
+  <!-- 7d/7e. Labels still empty, only the glyph image is drawn: never guess from its shape -->
+  <div class="post" data-expect="organic" data-name="empty label, square glyph">
     <div role="article">
       <span class="name">Tire Shop</span>
       <span class="meta"><a href="#q"><span aria-labelledby="lbl-empty1"><svg width="20" height="16"><use href="#g-narrow"></use></svg></span></a> · 🌐</span>
       <span class="body">Winter tires</span>
     </div>
   </div>
-  <div class="post" data-expect="organic" data-name="lazy label, wide glyph">
+  <div class="post" data-expect="organic" data-name="empty label, wide glyph">
     <div role="article">
       <span class="name">Car Club · Follow</span>
       <span class="meta"><a href="#r"><span aria-labelledby="lbl-empty2"><svg width="70" height="16"><use href="#g-wide"></use></svg></span></a> · 🌐</span>
       <span class="body">Track day photos</span>
     </div>
   </div>
-  <!-- 7f. Square glyph that later turns out to be a short timestamp: hidden, then restored -->
+  <!-- 7f. Square glyph whose label turns out to be a short timestamp -->
   <div class="post" data-expect="organic" data-name="square glyph, label '3h' later">
     <div role="article">
       <span class="name">Sam Park</span>
@@ -175,21 +175,6 @@
       p.removeAttribute('data-fbab'); // un-hide so we can measure what the script "saw"
       const header = window.__fbab.renderedText(p, 110).text.replace(/\n/g, ' ⏎ ');
       lines.push(`${ok ? 'PASS' : 'FAIL'}  ${p.dataset.name.padEnd(26)} expect=${p.dataset.expect.padEnd(8)} got=${got.padEnd(8)} rendered="${header}"`);
-    }
-    // Timestamp triage unit checks: [header text, expected hasTimestamp]
-    const TS = [
-      ['Jane Doe\n3h · 🌐', true], ['Bob\n15m', true], ['Bob\nYesterday at 4:12 PM · 🌐', true],
-      ['Group\nOctober 2 · 🌐', true], ['Gruppe\n2 Okt', false /* German month abbrev not covered; goes to AI */],
-      ['Group\n2 Oct at 10:00', true], ['Page\nJust now', true], ['Page\n2d', true],
-      ['Acme Shoes\nSponsored · 🌐', false], ['5 Star Shoes\n· 🌐', false], ['Acme\nShop the sale', false],
-      ['Acme Running Co.', false],
-      ['2 hours ago', true], ['an hour ago', true], ['5 minutes ago', true], ['Ad', false],
-    ];
-    for (const [h, want] of TS) {
-      total++;
-      const got = window.__fbab.hasTimestamp(h);
-      if (got === want) pass++;
-      lines.push(`${got === want ? 'PASS' : 'FAIL'}  timestamp ${JSON.stringify(h).padEnd(38)} expect=${want} got=${got}`);
     }
     lines.push(`RESULT ${pass}/${total}`);
     document.getElementById('results').textContent = lines.join('\n');
